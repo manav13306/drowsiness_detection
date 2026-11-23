@@ -1,0 +1,9 @@
+# Needed to run the web app, detect.py and the NumPy trainer
+opencv-python>=4.8,<5      # 4.x is required: it ships the Haar face cascade (5.x removed it)
+numpy>=1.23
+flask>=3.0
+matplotlib>=3.7            # only for the training_curves.png written by train.py
+pygame>=2.5                # only for the alarm in detect.py (the web app plays the alarm in the browser)
+
+# OPTIONAL - only if you want train.py to use Keras instead of the built-in NumPy trainer:
+# tensorflow>=2.13

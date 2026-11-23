@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drowsiness Detection</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1220'/%3E%3Cpath d='M5 16c4-6 18-6 22 0-4 6-18 6-22 0z' fill='none' stroke='%232dd4bf' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='3.4' fill='%232dd4bf'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-state="idle">
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><path d="M3 16c4.5-7 21.500-7 26 0-4.500 7-21.500 7-26 0z" fill="none" stroke="currentColor" stroke-width="2.200"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg>
+    <div><h1>Drowsiness Detection</h1><p>CNN eye-state monitor &middot; Deep Learning project</p></div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="live" role="tab">Live monitor</button>
+    <button class="tab" data-tab="upload" role="tab">Test image / video</button>
+    <button class="tab" data-tab="model" role="tab">Model &amp; dataset</button>
+  </nav>
+</header>
+
+<main>
+<!-- ===================================================== LIVE -->
+<section id="tab-live" class="panel active">
+  <div class="grid-live">
+    <div class="stage-col">
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="idle-msg" id="idleMsg">
+          <svg viewBox="0 0 24 24" width="44" height="44"><path d="M2 12c3-5 17-5 20 0-3 5-17 5-20 0z" fill="none" stroke="currentColor" stroke-width="1.500"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+          <p>Camera is off</p><small>Press <b>Start camera</b> and allow access when the browser asks.</small>
+        </div>
+        <div class="alert-banner" id="alertBanner">&#9888; DROWSY &mdash; WAKE UP!</div>
+        <div class="badge" id="statusBadge">IDLE</div>
+      </div>
+      <div class="controls">
+        <button class="btn primary" id="btnStart">Start camera</button>
+        <button class="btn" id="btnStop" disabled>Stop</button>
+        <button class="btn ghost" id="btnReset" disabled>Reset stats</button>
+        <label class="toggle"><input type="checkbox" id="optSound" checked><span></span>Alarm sound</label>
+        <label class="toggle"><input type="checkbox" id="optBoxes" checked><span></span>Show eye boxes</label>
+      </div>
+      <p class="hint" id="camError" hidden></p>
+    </div>
+
+    <div class="side-col">
+      <div class="card status-card">
+        <div class="label">Driver state</div>
+        <div class="status-big" id="statusBig">Waiting</div>
+        <div class="sub" id="statusSub">Start the camera to begin monitoring.</div>
+        <div class="meter"><div class="meter-fill" id="pOpenFill"></div><div class="meter-thr" id="thrMark"></div></div>
+        <div class="meter-labels"><span>closed</span><span>P(eyes open) = <b id="pOpenVal">&ndash;</b></span><span>open</span></div>
+        <div class="closed-timer"><div class="label">Eyes closed for</div>
+          <div class="timer-row"><span id="closedFor">0.0 s</span><span class="of" id="closedOf">/ 1.5 s</span></div>
+          <div class="bar"><div id="closedBar"></div></div></div>
+      </div>
+      <div class="stats">
+        <div class="card stat"><div class="label">Blinks</div><div class="num" id="sBlinks">0</div></div>
+        <div class="card stat"><div class="label">PERCLOS <i title="Percentage of time the eyes were closed in the last 60 s. Above ~20% is a classic fatigue indicator.">?</i></div><div class="num" id="sPerclos">0%</div></div>
+        <div class="card stat"><div class="label">Drowsy alerts</div><div class="num" id="sAlerts">0</div></div>
+        <div class="card stat"><div class="label">Session</div><div class="num" id="sTime">0:00</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-bottom">
+    <div class="card chart-card">
+      <div class="card-head"><h2>P(eyes open) &mdash; last 60 s</h2><span class="muted" id="sPerf">&ndash;</span></div>
+      <canvas id="timeline" height="150"></canvas>
+    </div>
+    <div class="card settings">
+      <div class="card-head"><h2>Settings</h2></div>
+      <label class="slider"><span>Alarm after eyes closed for <b id="vClosed">1.5 s</b></span>
+        <input type="range" id="rClosed" min="0.5" max="5" step="0.1" value="{{ defaults.closed_seconds }}"></label>
+      <label class="slider"><span>Closed-eye threshold <b id="vThr">0.50</b></span>
+        <input type="range" id="rThr" min="0.1" max="0.9" step="0.05" value="{{ defaults.open_thr }}"></label>
+      <p class="hint">A normal blink lasts ~0.3 s, so alarm times below 1 s may give false alerts. Raise the threshold to make the detector stricter about calling an eye &ldquo;open&rdquo;.</p>
+    </div>
+    <div class="card log-card">
+      <div class="card-head"><h2>Event log</h2></div>
+      <ul id="log"><li class="muted">No events yet.</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== UPLOAD -->
+<section id="tab-upload" class="panel">
+  <div class="grid-upload">
+    <div class="card">
+      <div class="card-head"><h2>Single image</h2></div>
+      <label class="drop" id="dropImg"><input type="file" id="fileImg" accept="image/*" hidden>
+        <b>Choose a photo</b><span>or drop it here &middot; a face looking at the camera works best</span></label>
+      <div id="imgResult" class="result" hidden>
+        <img id="imgOut" alt="Annotated result">
+        <div class="verdict" id="imgVerdict"></div>
+        <div class="muted" id="imgDetail"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Video file</h2></div>
+      <label class="drop" id="dropVid"><input type="file" id="fileVid" accept="video/*" hidden>
+        <b>Choose a video</b><span>mp4 / avi / mov / webm &middot; analysed at ~8 frames per second</span></label>
+      <div id="vidBusy" class="muted" hidden>Analysing video&hellip; this can take a little while.</div>
+      <div id="vidResult" class="result" hidden>
+        <div class="stats mini" id="vidStats"></div>
+        <canvas id="vidChart" height="130"></canvas>
+        <img id="vidFrame" alt="Most closed moment">
+        <div class="muted">Frame with the lowest P(open) in the video</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== MODEL -->
+<section id="tab-model" class="panel">
+  <div id="modelBody"><p class="muted">Loading model details&hellip;</p></div>
+</section>
+</main>
+
+<footer>Educational prototype &mdash; not a certified safety device. Video frames are processed on this computer only.</footer>
+<audio id="alarm" src="{{ url_for('static', filename='alarm.wav') }}" loop preload="auto"></audio>
+<script>window.DEFAULTS = {{ defaults|tojson }};</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
